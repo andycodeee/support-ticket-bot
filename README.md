@@ -32,7 +32,7 @@ src/
 ## 2. Local installation
 
 Requirements: Node.js 20.11+ (22 LTS recommended).
-
+1
 ```bash
 cp .env.example .env     # then fill in every value
 npm install
