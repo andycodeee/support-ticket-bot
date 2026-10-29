@@ -12,7 +12,7 @@ import {
 import { config } from '../../config.js';
 import { log } from '../../logger.js';
 import { OpenCloudError, openCloudConfigured } from '../../roblox/openCloud.js';
-import { getAssetName, getAssetThumbnail, getHeadshotUrl } from '../../roblox/publicApis.js';
+import { getAssetName, getAssetThumbnail, getHeadshotUrl } from '../../roblox/publicAPIs.js';
 import { fetchPoints } from '../../roblox/points.js';
 import { fetchPurchaseHistory, resolveUserId } from '../../roblox/purchases.js';
 
@@ -28,8 +28,8 @@ const EMOJI = {
   refund: '<:refund:1565444503857266859>',
   notRefunded: '<:b_whitex:1565444638217609236>',
   malformed: '<:685108warn:1565446431928750172>',
-  unknown: '⚪',
-  points: '💰',
+  unknown: '<a:dc_questionMark:1565447526436573324>',
+  points: '<:b3f1fd249969462596a6df77c4d7c6de:1565447274677403699>',
 };
 
 export const checkPurchaseCommand = new SlashCommandBuilder()
