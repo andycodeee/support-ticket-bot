@@ -33,5 +33,7 @@ export const config = Object.freeze({
   roblox: Object.freeze({
     apiKey: process.env.ROBLOX_API_KEY?.trim() || '',
     universeId: process.env.ROBLOX_UNIVERSE_ID?.trim() || '',
+    pointsDatastore: process.env.POINTS_DATASTORE?.trim() || '',
+    pointsScope: process.env.POINTS_SCOPE?.trim() || 'global',
   }),
 });

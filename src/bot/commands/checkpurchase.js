@@ -12,13 +12,25 @@ import {
 import { config } from '../../config.js';
 import { log } from '../../logger.js';
 import { OpenCloudError, openCloudConfigured } from '../../roblox/openCloud.js';
+import { getAssetName, getAssetThumbnail, getHeadshotUrl } from '../../roblox/publicApis.js';
+import { fetchPoints } from '../../roblox/points.js';
 import { fetchPurchaseHistory, resolveUserId } from '../../roblox/purchases.js';
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 5;
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_MAX = 50;
 export const PURCHASE_PAGE_PREFIX = 'purchases:';
 const NOT_ADMIN = 'Only server administrators can use this command.';
+
+const EMOJI = {
+  completed: '<:b_whitecheck:1565443556024389764>',
+  cancelled: '<a:dr_redX_No:1565443712480182436>',
+  refund: '<:refund:1565444503857266859>',
+  notRefunded: '<:b_whitex:1565444638217609236>',
+  malformed: '<:685108warn:1565446431928750172>',
+  unknown: '⚪',
+  points: '💰',
+};
 
 export const checkPurchaseCommand = new SlashCommandBuilder()
   .setName('checkpurchase')
@@ -37,8 +49,7 @@ const ephemeral = (content) => ({ content, flags: MessageFlags.Ephemeral });
 const discordTime = (seconds) => `<t:${Math.floor(seconds)}:f>`;
 const clip = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 const profileUrl = (userId) => `https://www.roblox.com/users/${userId}/profile`;
-const headshotUrl = (userId) =>
-  `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=150&height=150&format=png`;
+const catalogUrl = (assetId) => `https://www.roblox.com/catalog/${assetId}`;
 
 function isAdmin(interaction) {
   return (
@@ -109,87 +120,116 @@ function computeStats(entries) {
   return s;
 }
 
-function formatField(e) {
-  if (e.kind === 'bad') {
+function describe(e) {
+  if (e.status === 'completed') {
+    return { icon: EMOJI.completed, text: `${EMOJI.completed} Completed`, color: 0x57f287 };
+  }
+  if (e.status === 'cancelled' && e.refunded) {
     return {
-      name: '⚠️ Malformed record',
-      value: clip(`Entry #${e.index + 1}: ${e.reason}`, 1024),
-      inline: false,
+      icon: EMOJI.cancelled,
+      text: `${EMOJI.refund} Cancelled - Refunded ${e.cost} min`,
+      color: 0xfaa61a,
     };
   }
-
-  let icon;
-  let title;
-  if (e.status === 'completed') {
-    icon = '🟢';
-    title = 'Completed';
-  } else if (e.status === 'cancelled' && e.refunded) {
-    icon = '🟠';
-    title = `Cancelled - Refunded ${e.cost} min`;
-  } else if (e.status === 'cancelled') {
-    icon = '🔴';
-    title = 'Cancelled - NOT REFUNDED';
-  } else {
-    icon = '⚪';
-    title = `Unknown status: ${clip(escapeMarkdown(e.status), 40)}`;
+  if (e.status === 'cancelled') {
+    return {
+      icon: EMOJI.cancelled,
+      text: `${EMOJI.notRefunded} Cancelled - NOT REFUNDED`,
+      color: 0xed4245,
+    };
   }
+  return {
+    icon: EMOJI.unknown,
+    text: `Unknown status: ${clip(escapeMarkdown(e.status), 40)}`,
+    color: 0x99aab5,
+  };
+}
 
-  const asset = e.assetName ? clip(escapeMarkdown(e.assetName), 100) : e.assetId;
-  const lines = [discordTime(e.time), `Asset: ${asset}`, `Cost: ${e.cost} min`];
-  if (e.source) lines.push(`Source: ${clip(escapeMarkdown(e.source), 40)}`);
-
-  return { name: clip(`${icon} ${title}`, 256), value: clip(lines.join('\n'), 1024), inline: false };
+function formatPoints(p) {
+  if (!p.configured) return 'Not configured (set POINTS_DATASTORE)';
+  if (p.points === null) return 'Unknown';
+  return p.points.toLocaleString('en-US');
 }
 
 function totalPagesFor(state) {
   return 1 + Math.ceil(state.entries.length / PAGE_SIZE);
 }
 
-function buildProfileEmbed(state, s, totalPages) {
+function buildProfileEmbed(state, s, totalPages, headshot) {
   const problems = s.notRefunded > 0 || s.malformed > 0;
-  return new EmbedBuilder()
-    .setTitle(clip(`🧾 Purchase history: ${escapeMarkdown(state.label)}`, 256))
+  const embed = new EmbedBuilder()
+    .setTitle(clip(`🧾 ${escapeMarkdown(state.label)}`, 256))
     .setURL(profileUrl(state.userId))
-    .setThumbnail(headshotUrl(state.userId))
     .setColor(problems ? 0xed4245 : 0x57f287)
     .setFooter({ text: `Profile · Page 1/${totalPages} · Use Next to browse purchases` })
     .addFields(
       { name: 'Username', value: escapeMarkdown(state.label), inline: true },
       { name: 'UserId', value: String(state.userId), inline: true },
-      { name: 'Profile', value: `[View on Roblox](${profileUrl(state.userId)})`, inline: true },
+      { name: `${EMOJI.points} Points`, value: formatPoints(state.points), inline: true },
       { name: 'Total records', value: String(s.total), inline: true },
-      { name: '🟢 Completed', value: `${s.completed} (${s.completedMinutes} min spent)`, inline: true },
-      { name: '⛔ Cancelled', value: String(s.cancelled), inline: true },
-      { name: '🟠 Refunded', value: `${s.refunded} (${s.refundedMinutes} min)`, inline: true },
-      { name: '🔴 Not refunded', value: `${s.notRefunded} (${s.notRefundedMinutes} min)`, inline: true },
-      { name: '⚠️ Malformed', value: String(s.malformed), inline: true },
+      { name: `${EMOJI.completed} Completed`, value: `${s.completed} (${s.completedMinutes} min spent)`, inline: true },
+      { name: `${EMOJI.cancelled} Cancelled`, value: String(s.cancelled), inline: true },
+      { name: `${EMOJI.refund} Refunded`, value: `${s.refunded} (${s.refundedMinutes} min)`, inline: true },
+      { name: `${EMOJI.notRefunded} Not refunded`, value: `${s.notRefunded} (${s.notRefundedMinutes} min)`, inline: true },
+      { name: `${EMOJI.malformed} Malformed`, value: String(s.malformed), inline: true },
       { name: 'First purchase', value: s.firstTime !== null ? discordTime(s.firstTime) : 'n/a', inline: true },
       { name: 'Latest purchase', value: s.lastTime !== null ? discordTime(s.lastTime) : 'n/a', inline: true },
     );
+  if (headshot) embed.setThumbnail(headshot);
+  return embed;
 }
 
-function buildPage(state, page) {
+function buildPurchaseEmbed(e, extras) {
+  if (e.kind === 'bad') {
+    return new EmbedBuilder()
+      .setTitle(`${EMOJI.malformed} Malformed record`)
+      .setDescription(clip(`Entry #${e.index + 1}: ${e.reason}`, 4000))
+      .setColor(0x99aab5)
+      .setFooter({ text: extras.footer });
+  }
+
+  const d = describe(e);
+  const name = e.assetName || extras.name || `Asset ${e.assetId}`;
+  const lines = [`**${d.text}**`, discordTime(e.time), `Cost: ${e.cost} min`, `Asset ID: ${e.assetId}`];
+  if (e.source) lines.push(`Source: ${clip(escapeMarkdown(e.source), 40)}`);
+
+  const embed = new EmbedBuilder()
+    .setTitle(clip(`${d.icon} ${escapeMarkdown(name)}`, 256))
+    .setURL(catalogUrl(e.assetId))
+    .setDescription(lines.join('\n'))
+    .setColor(d.color)
+    .setFooter({ text: extras.footer });
+  if (extras.thumb) embed.setThumbnail(extras.thumb);
+  return embed;
+}
+
+async function buildPage(state, page) {
   const totalPages = totalPagesFor(state);
-  const stats = computeStats(state.entries);
 
   if (page === 0) {
-    return { embed: buildProfileEmbed(state, stats, totalPages), totalPages };
+    const stats = computeStats(state.entries);
+    const headshot = await getHeadshotUrl(state.userId).catch(() => null);
+    return { embeds: [buildProfileEmbed(state, stats, totalPages, headshot)], totalPages };
   }
 
   const newestFirst = [...state.entries].reverse();
   const start = (page - 1) * PAGE_SIZE;
   const slice = newestFirst.slice(start, start + PAGE_SIZE);
-  const problems = stats.notRefunded > 0 || stats.malformed > 0;
 
-  const embed = new EmbedBuilder()
-    .setTitle(clip(`Purchases: ${escapeMarkdown(state.label)}`, 256))
-    .setColor(problems ? 0xed4245 : 0x57f287)
-    .setFooter({
-      text: `Showing ${start + 1}-${start + slice.length} of ${state.entries.length} · newest first · Page ${page + 1}/${totalPages}`,
-    })
-    .addFields(slice.map(formatField));
+  const extras = await Promise.all(
+    slice.map(async (e, i) => {
+      const footer = `Purchase ${start + i + 1} of ${state.entries.length} · newest first · Page ${page + 1}/${totalPages}`;
+      if (e.kind !== 'ok') return { footer };
+      const [thumb, name] = await Promise.all([
+        getAssetThumbnail(e.assetId).catch(() => null),
+        e.assetName ? Promise.resolve(null) : getAssetName(e.assetId).catch(() => null),
+      ]);
+      return { thumb, name, footer };
+    }),
+  );
 
-  return { embed, totalPages };
+  const embeds = slice.map((e, i) => buildPurchaseEmbed(e, extras[i]));
+  return { embeds, totalPages };
 }
 
 function pagerRow(token, page, totalPages) {
@@ -211,7 +251,6 @@ function errorMessage(err) {
   if (err instanceof OpenCloudError) {
     switch (err.code) {
       case 'rate_limited':
-        return err.message;
       case 'auth':
         return err.message;
       case 'not_configured':
@@ -252,15 +291,21 @@ export async function executeCheckPurchase(interaction) {
       return interaction.editReply(`No purchases found for ${escapeMarkdown(label)}`);
     }
 
+    const points = await fetchPoints(lookup.userId).catch((err) => {
+      log.warn('Points lookup failed', err);
+      return { configured: true, points: null };
+    });
+
     const state = {
       adminId: interaction.user.id,
       label,
       userId: lookup.userId,
       entries: history.entries,
+      points,
     };
     const token = remember(state);
-    const { embed, totalPages } = buildPage(state, 0);
-    return interaction.editReply({ embeds: [embed], components: [pagerRow(token, 0, totalPages)] });
+    const { embeds, totalPages } = await buildPage(state, 0);
+    return interaction.editReply({ embeds, components: [pagerRow(token, 0, totalPages)] });
   } catch (err) {
     log.error('/checkpurchase failed', err);
     return interaction.editReply(errorMessage(err));
@@ -285,6 +330,6 @@ export async function handlePurchasePage(interaction) {
 
   const totalPages = totalPagesFor(state);
   const page = Math.min(Math.max(Number(pageText) || 0, 0), totalPages - 1);
-  const { embed } = buildPage(state, page);
-  return interaction.update({ embeds: [embed], components: [pagerRow(token, page, totalPages)] });
+  const { embeds } = await buildPage(state, page);
+  return interaction.update({ embeds, components: [pagerRow(token, page, totalPages)] });
 }
