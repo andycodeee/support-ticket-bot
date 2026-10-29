@@ -1,5 +1,4 @@
-import { config } from '../config.js';
-import { log } from '../logger.js';
+import { db } from '../db.js';
 
 export class ApiError extends Error {
   constructor(status, body, retryable) {
@@ -10,46 +9,67 @@ export class ApiError extends Error {
   }
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const listTickets = db.prepare(`
+  SELECT t.id, t.user_id, t.username, t.category, t.explanation, t.status, t.created_at,
+         r.response, r.minutes, r.responder_id, r.created_at AS responded_at
+  FROM tickets t
+  LEFT JOIN responses r ON r.ticket_id = t.id
+  WHERE t.id > ?
+  ORDER BY t.id ASC
+  LIMIT ?
+`);
 
-async function request(method, path, { body, retries = 4 } = {}) {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      const res = await fetch(`${config.apiBaseUrl}${path}`, {
-        method,
-        headers: {
-          'X-API-Secret': config.apiSecret,
-          Accept: 'application/json',
-          ...(body ? { 'Content-Type': 'application/json' } : {}),
-        },
-        body: body ? JSON.stringify(body) : undefined,
-        signal: AbortSignal.timeout(10_000),
-      });
-      const text = await res.text();
-      let data = {};
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch {
-        data = {};
-      }
-      if (res.ok) return data;
-      throw new ApiError(res.status, data, res.status >= 500 || res.status === 429);
-    } catch (err) {
-      // Network errors and 5xx/429 are retried; other 4xx are final.
-      const retryable = err instanceof ApiError ? err.retryable : true;
-      if (!retryable || attempt >= retries) throw err;
-      const delay = Math.min(15_000, 1000 * 2 ** (attempt - 1));
-      log.warn(`API ${method} ${path} failed (attempt ${attempt}), retrying in ${delay}ms`, err);
-      await sleep(delay);
-    }
-  }
-}
-
+// Used by the bot to find new tickets. Reads the database directly, no HTTP.
 export async function fetchTicketsAfter(afterId, limit = 50) {
-  const data = await request('GET', `/support/tickets?afterId=${afterId}&limit=${limit}`);
-  return data.tickets ?? [];
+  return listTickets.all(afterId, limit).map((r) => ({
+    id: r.id,
+    userId: r.user_id,
+    username: r.username,
+    category: r.category,
+    explanation: r.explanation,
+    status: r.status,
+    createdAt: r.created_at,
+    response: r.response ?? null,
+    minutes: r.minutes ?? null,
+    responderId: r.responder_id ?? null,
+    respondedAt: r.responded_at ?? null,
+  }));
 }
 
-export function submitResponse(payload) {
-  return request('POST', '/support/responses', { body: payload });
+const getTicket = db.prepare('SELECT id, user_id FROM tickets WHERE id = ?');
+const getResponseById = db.prepare('SELECT id, ticket_id FROM responses WHERE id = ?');
+const getResponseForTicket = db.prepare('SELECT id FROM responses WHERE ticket_id = ?');
+const insertResponse = db.prepare(
+  'INSERT INTO responses (id, ticket_id, user_id, response, minutes, responder_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+);
+const markAnswered = db.prepare("UPDATE tickets SET status = 'answered' WHERE id = ?");
+const saveResponse = db.transaction((row) => {
+  insertResponse.run(row.id, row.ticketId, row.userId, row.response, row.minutes, row.responderId, row.createdAt);
+  markAnswered.run(row.ticketId);
+});
+
+// Used by the bot to record an admin response. Same rules as POST /support/responses.
+export async function submitResponse({ id, ticketId, userId, response, minutes = 0, responderId = null }) {
+  const ticket = getTicket.get(ticketId);
+  if (!ticket) throw new ApiError(404, { error: 'ticket_not_found' }, false);
+  if (ticket.user_id !== userId) throw new ApiError(400, { error: 'user_mismatch' }, false);
+
+  const sameId = getResponseById.get(id);
+  if (sameId) {
+    if (sameId.ticket_id === ticketId) return { ok: true, id, duplicate: true };
+    throw new ApiError(409, { error: 'id_in_use' }, false);
+  }
+  const existing = getResponseForTicket.get(ticketId);
+  if (existing) throw new ApiError(409, { error: 'already_answered', responseId: existing.id }, false);
+
+  saveResponse({
+    id,
+    ticketId,
+    userId,
+    response: response.trim(),
+    minutes,
+    responderId,
+    createdAt: Date.now(),
+  });
+  return { ok: true, id };
 }
