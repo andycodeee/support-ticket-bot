@@ -22,7 +22,7 @@ const NOT_ADMIN = 'Only server administrators can use this command.';
 
 export const checkPurchaseCommand = new SlashCommandBuilder()
   .setName('checkpurchase')
-  .setDescription("Show a player's FreeUGC purchase history (admin only)")
+  .setDescription("Show a player's profile and full FreeUGC purchase history (admin only)")
   .setDMPermission(false)
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addStringOption((opt) =>
@@ -36,6 +36,9 @@ export const checkPurchaseCommand = new SlashCommandBuilder()
 const ephemeral = (content) => ({ content, flags: MessageFlags.Ephemeral });
 const discordTime = (seconds) => `<t:${Math.floor(seconds)}:f>`;
 const clip = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+const profileUrl = (userId) => `https://www.roblox.com/users/${userId}/profile`;
+const headshotUrl = (userId) =>
+  `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=150&height=150&format=png`;
 
 function isAdmin(interaction) {
   return (
@@ -44,7 +47,6 @@ function isAdmin(interaction) {
   );
 }
 
-// Short-lived, in-memory cache so page buttons don't re-query Open Cloud.
 const cache = new Map();
 
 function remember(state) {
@@ -67,23 +69,44 @@ function recall(token) {
   return entry;
 }
 
-function summarize(entries) {
-  let completed = 0;
-  let refundedMinutes = 0;
-  let notRefunded = 0;
-  let malformed = 0;
+function computeStats(entries) {
+  const s = {
+    total: entries.length,
+    completed: 0,
+    completedMinutes: 0,
+    cancelled: 0,
+    refunded: 0,
+    refundedMinutes: 0,
+    notRefunded: 0,
+    notRefundedMinutes: 0,
+    malformed: 0,
+    firstTime: null,
+    lastTime: null,
+  };
+
   for (const e of entries) {
     if (e.kind === 'bad') {
-      malformed++;
-    } else if (e.status === 'completed') {
-      completed++;
-    } else if (e.status === 'cancelled' && e.refunded) {
-      refundedMinutes += e.cost;
+      s.malformed++;
+      continue;
+    }
+    if (s.firstTime === null || e.time < s.firstTime) s.firstTime = e.time;
+    if (s.lastTime === null || e.time > s.lastTime) s.lastTime = e.time;
+
+    if (e.status === 'completed') {
+      s.completed++;
+      s.completedMinutes += e.cost;
     } else if (e.status === 'cancelled') {
-      notRefunded++;
+      s.cancelled++;
+      if (e.refunded) {
+        s.refunded++;
+        s.refundedMinutes += e.cost;
+      } else {
+        s.notRefunded++;
+        s.notRefundedMinutes += e.cost;
+      }
     }
   }
-  return { total: entries.length, completed, refundedMinutes, notRefunded, malformed };
+  return s;
 }
 
 function formatField(e) {
@@ -118,26 +141,52 @@ function formatField(e) {
   return { name: clip(`${icon} ${title}`, 256), value: clip(lines.join('\n'), 1024), inline: false };
 }
 
+function totalPagesFor(state) {
+  return 1 + Math.ceil(state.entries.length / PAGE_SIZE);
+}
+
+function buildProfileEmbed(state, s, totalPages) {
+  const problems = s.notRefunded > 0 || s.malformed > 0;
+  return new EmbedBuilder()
+    .setTitle(clip(`🧾 Purchase history: ${escapeMarkdown(state.label)}`, 256))
+    .setURL(profileUrl(state.userId))
+    .setThumbnail(headshotUrl(state.userId))
+    .setColor(problems ? 0xed4245 : 0x57f287)
+    .setFooter({ text: `Profile · Page 1/${totalPages} · Use Next to browse purchases` })
+    .addFields(
+      { name: 'Username', value: escapeMarkdown(state.label), inline: true },
+      { name: 'UserId', value: String(state.userId), inline: true },
+      { name: 'Profile', value: `[View on Roblox](${profileUrl(state.userId)})`, inline: true },
+      { name: 'Total records', value: String(s.total), inline: true },
+      { name: '🟢 Completed', value: `${s.completed} (${s.completedMinutes} min spent)`, inline: true },
+      { name: '⛔ Cancelled', value: String(s.cancelled), inline: true },
+      { name: '🟠 Refunded', value: `${s.refunded} (${s.refundedMinutes} min)`, inline: true },
+      { name: '🔴 Not refunded', value: `${s.notRefunded} (${s.notRefundedMinutes} min)`, inline: true },
+      { name: '⚠️ Malformed', value: String(s.malformed), inline: true },
+      { name: 'First purchase', value: s.firstTime !== null ? discordTime(s.firstTime) : 'n/a', inline: true },
+      { name: 'Latest purchase', value: s.lastTime !== null ? discordTime(s.lastTime) : 'n/a', inline: true },
+    );
+}
+
 function buildPage(state, page) {
-  const totalPages = Math.max(1, Math.ceil(state.entries.length / PAGE_SIZE));
+  const totalPages = totalPagesFor(state);
+  const stats = computeStats(state.entries);
+
+  if (page === 0) {
+    return { embed: buildProfileEmbed(state, stats, totalPages), totalPages };
+  }
+
   const newestFirst = [...state.entries].reverse();
-  const slice = newestFirst.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
-  const s = summarize(state.entries);
+  const start = (page - 1) * PAGE_SIZE;
+  const slice = newestFirst.slice(start, start + PAGE_SIZE);
+  const problems = stats.notRefunded > 0 || stats.malformed > 0;
 
-  const description = [
-    `Records: **${s.total}** · Completed: **${s.completed}**`,
-    `Refunded: **${s.refundedMinutes} min** · Not refunded: **${s.notRefunded}**`,
-    s.malformed ? `Malformed: **${s.malformed}**` : null,
-  ]
-    .filter(Boolean)
-    .join('\n');
-
-  const problems = s.notRefunded + s.malformed;
   const embed = new EmbedBuilder()
-    .setTitle(clip(`Purchase history: ${escapeMarkdown(state.label)}`, 256))
-    .setDescription(description)
-    .setColor(problems > 0 ? 0xed4245 : 0x57f287)
-    .setFooter({ text: `UserId ${state.userId} · Page ${page + 1}/${totalPages} · newest first` })
+    .setTitle(clip(`Purchases: ${escapeMarkdown(state.label)}`, 256))
+    .setColor(problems ? 0xed4245 : 0x57f287)
+    .setFooter({
+      text: `Showing ${start + 1}-${start + slice.length} of ${state.entries.length} · newest first · Page ${page + 1}/${totalPages}`,
+    })
     .addFields(slice.map(formatField));
 
   return { embed, totalPages };
@@ -234,7 +283,7 @@ export async function handlePurchasePage(interaction) {
     return interaction.reply(ephemeral('Only the administrator who ran this lookup can page through it.'));
   }
 
-  const totalPages = Math.max(1, Math.ceil(state.entries.length / PAGE_SIZE));
+  const totalPages = totalPagesFor(state);
   const page = Math.min(Math.max(Number(pageText) || 0, 0), totalPages - 1);
   const { embed } = buildPage(state, page);
   return interaction.update({ embeds: [embed], components: [pagerRow(token, page, totalPages)] });
