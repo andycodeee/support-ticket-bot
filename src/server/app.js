@@ -85,7 +85,10 @@ export function createApp() {
     const userId = toUserId(body.userId);
     const { username, category, explanation, requestId } = body;
 
-    if (!isPositiveInt(userId)) return bad(res, 'userId must be a positive integer');
+    if (!isPositiveInt(userId)) {
+      log.warn(`Rejected ticket: userId type=${typeof body.userId} value=${JSON.stringify(body.userId)}`);
+      return bad(res, 'userId must be a positive integer');
+    }
     if (typeof username !== 'string' || !username.trim() || username.trim().length > 64) {
       return bad(res, 'username must be 1-64 characters');
     }
