@@ -1,7 +1,6 @@
 import { config } from './config.js';
 
-// Any occurrence of these values is replaced before anything is printed.
-const secrets = [config.apiSecret, config.discord.token].filter(Boolean);
+const secrets = [config.apiSecret, config.discord.token, config.roblox.apiKey].filter(Boolean);
 
 export function redact(value) {
   let text;

@@ -30,4 +30,8 @@ export const config = Object.freeze({
       .map((s) => s.trim())
       .filter(Boolean),
   }),
+  roblox: Object.freeze({
+    apiKey: process.env.ROBLOX_API_KEY?.trim() || '',
+    universeId: process.env.ROBLOX_UNIVERSE_ID?.trim() || '',
+  }),
 });

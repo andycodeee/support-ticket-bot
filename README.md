@@ -76,7 +76,7 @@ Secrets are never logged. The logger replaces the token and secret with `[REDACT
    Required permissions: View Channel, Send Messages, Embed Links, Read Message History.
 5. In the support channel, make sure the bot role can see and post there. Set channel permissions so the bot can post, and restrict who can view the channel as you like.
 
-The bot uses plain interactions (buttons and modals), not slash commands, so there is nothing to register.
+The support ticket flow uses buttons and modals. Slash commands are registered automatically on startup (see section 11).
 
 ---
 
@@ -189,3 +189,23 @@ Backups: the database is at `/data/support.sqlite`. Use Railway's volume backup 
 - Admin actions are checked on both button click and modal submit, and only in the configured guild.
 - Discord mentions are disabled on embeds, so responses cannot ping @everyone.
 - Input is validated on both the API and the bot side. Minutes are non-negative whole numbers capped at 1,000,000,000.
+## 11. `/checkpurchase` admin command
+
+Usage: `/checkpurchase username:<roblox_username or UserId>`
+
+Shows a player's FreeUGC purchase history, newest first, with a Previous/Next pager. Data is read directly from Roblox Open Cloud, so offline players work. Responses are ephemeral, so only the admin who runs the command sees them.
+
+**Setup**
+
+1. Create or reuse a server-side Open Cloud API key (Creator Hub → Open Cloud → API Keys) with **Data Stores: read** access to `PurchaseData` for your universe. Set the key's IP allowlist to empty, or Railway's outbound IPs will be blocked.
+2. Set `ROBLOX_API_KEY` and `ROBLOX_UNIVERSE_ID` in `.env` or Railway Variables.
+3. Re-invite the bot using the invite URL printed at startup. It now includes the `applications.commands` scope. Without it, command registration fails with a 403 error.
+4. Restart the bot. It registers the command to your guild on startup, so it appears within seconds.
+
+**Access:** only members with the Administrator permission can run the command or use its page buttons. Discord also hides the command from everyone else.
+
+**Status display:** 🟢 Completed, 🟠 Cancelled - Refunded X min, 🔴 Cancelled - NOT REFUNDED, ⚠️ Malformed record. Malformed records are shown rather than skipped.
+
+**Lookup order:** the username index `user_<lowercase>` is checked first. If it's missing and the input is all digits, it's treated as a UserId.
+
+**Security:** the API key is redacted from logs, is never sent to Discord, and is read only from environment variables.

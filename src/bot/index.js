@@ -1,16 +1,27 @@
 import { Client, Events, GatewayIntentBits, MessageFlags, PermissionsBitField } from 'discord.js';
 import { config } from '../config.js';
 import { log } from '../logger.js';
+import { executeCheckPurchase, handlePurchasePage, PURCHASE_PAGE_PREFIX } from './commands/checkpurchase.js';
+import { registerCommands } from './commands/index.js';
 import { getSupportChannel } from './channel.js';
 import { handleInteraction } from './interactions.js';
 import { startPoller } from './poller.js';
 
+async function route(client, interaction) {
+  if (interaction.isChatInputCommand() && interaction.commandName === 'checkpurchase') {
+    return executeCheckPurchase(interaction);
+  }
+  if (interaction.isButton() && interaction.customId.startsWith(PURCHASE_PAGE_PREFIX)) {
+    return handlePurchasePage(interaction);
+  }
+  return handleInteraction(client, interaction);
+}
+
 export async function startBot() {
-  // Guilds intent only: no privileged intents (no Message Content) are needed.
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
   client.on(Events.InteractionCreate, (interaction) => {
-    handleInteraction(client, interaction).catch(async (err) => {
+    route(client, interaction).catch(async (err) => {
       log.error('Interaction handler failed', err);
       if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
         await interaction
@@ -33,9 +44,16 @@ export async function startBot() {
     PermissionsBitField.Flags.EmbedLinks,
     PermissionsBitField.Flags.ReadMessageHistory,
   ]).bitfield;
-  log.info(`Invite URL (first setup only): https://discord.com/oauth2/authorize?client_id=${config.discord.clientId}&scope=bot&permissions=${permissions}`);
+  log.info(
+    `Invite URL (first setup only): https://discord.com/oauth2/authorize?client_id=${config.discord.clientId}&scope=bot+applications.commands&permissions=${permissions}`,
+  );
 
-  // Fail fast if the support channel is misconfigured.
+  try {
+    await registerCommands();
+  } catch (err) {
+    log.error('Slash command registration failed. If you just added commands, re-invite the bot with the applications.commands scope.', err);
+  }
+
   await getSupportChannel(client);
   startPoller(client);
   return client;
