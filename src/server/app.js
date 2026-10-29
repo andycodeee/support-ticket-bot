@@ -74,7 +74,7 @@ const saveResponse = db.transaction((row) => {
 export function createApp() {
   const app = express();
   app.set('trust proxy', 1);
-  app.use(express.json({ limit: '32kb' }));
+  app.use(express.json({ limit: '32kb', type: () => true }));
 
   app.get('/health', (_req, res) => res.json({ ok: true, build: 'string-userid-v2' }));
 
