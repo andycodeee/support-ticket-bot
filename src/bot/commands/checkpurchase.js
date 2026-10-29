@@ -12,7 +12,7 @@ import {
 import { config } from '../../config.js';
 import { log } from '../../logger.js';
 import { OpenCloudError, openCloudConfigured } from '../../roblox/openCloud.js';
-import { getAssetName, getAssetThumbnail, getHeadshotUrl } from '../../roblox/publicAPIs.js';
+import { getAssetName, getAssetThumbnail, getHeadshotUrl } from '../../roblox/publicApis.js';
 import { fetchPoints } from '../../roblox/points.js';
 import { fetchPurchaseHistory, resolveUserId } from '../../roblox/purchases.js';
 
