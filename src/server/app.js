@@ -4,18 +4,20 @@ import { config } from '../config.js';
 import { db } from '../db.js';
 import { log } from '../logger.js';
 
-// NOTE: 'FailedPurcahse' is spelled exactly as in the original spec.
-// If Roblox sends 'FailedPurchase', change it here (and in README) to match.
 export const CATEGORIES = ['Report', 'FailedPurcahse', 'Bug'];
 
-const LEASE_MS = 60_000;             // a response handed to Roblox is hidden from other pollers for 60s
-const DUPLICATE_WINDOW_MS = 30_000;  // identical ticket from same user within 30s is treated as a duplicate
+const LEASE_MS = 60_000;
+const DUPLICATE_WINDOW_MS = 30_000;
 const MAX_MINUTES = 1_000_000_000;
 const MAX_RESPONSE_LENGTH = 1000;
 const MAX_EXPLANATION_LENGTH = 1000;
 const ID_PATTERN = /^[A-Za-z0-9-]{8,64}$/;
 
 const isPositiveInt = (v) => Number.isSafeInteger(v) && v > 0;
+const toUserId = (v) => {
+  if (typeof v === 'string' && /^\d+$/.test(v)) return Number(v);
+  return v;
+};
 const bad = (res, message) => res.status(400).json({ error: 'invalid_request', message });
 
 function secretMatches(provided) {
@@ -32,7 +34,6 @@ function requireSecret(req, res, next) {
   next();
 }
 
-// ---- Prepared statements ----
 const findByRequestId = db.prepare('SELECT id, status FROM tickets WHERE request_id = ?');
 const findRecentDuplicate = db.prepare(
   'SELECT id, status FROM tickets WHERE user_id = ? AND category = ? AND explanation = ? AND created_at >= ? ORDER BY id DESC LIMIT 1',
@@ -77,12 +78,12 @@ export function createApp() {
 
   app.get('/health', (_req, res) => res.json({ ok: true }));
 
-  // Everything under /support requires the shared secret.
   app.use('/support', requireSecret);
 
-  // Roblox -> create a ticket
   app.post('/support', (req, res) => {
-    const { userId, username, category, explanation, requestId } = req.body ?? {};
+    const body = req.body ?? {};
+    const userId = toUserId(body.userId);
+    const { username, category, explanation, requestId } = body;
 
     if (!isPositiveInt(userId)) return bad(res, 'userId must be a positive integer');
     if (typeof username !== 'string' || !username.trim() || username.trim().length > 64) {
@@ -115,7 +116,6 @@ export function createApp() {
     res.status(201).json({ id, status: 'pending' });
   });
 
-  // Bot -> list tickets after a cursor (used for posting to Discord)
   app.get('/support/tickets', (req, res) => {
     const afterId = Number(req.query.afterId ?? 0);
     const limit = Number(req.query.limit ?? 50);
@@ -140,7 +140,6 @@ export function createApp() {
     });
   });
 
-  // Roblox -> fetch undelivered responses. Leased for 60s so concurrent polls don't double-deliver.
   app.get('/support/responses', (_req, res) => {
     const now = Date.now();
     const rows = pendingForDelivery.all(now);
@@ -150,7 +149,6 @@ export function createApp() {
     });
   });
 
-  // Roblox -> acknowledge a response was processed. Idempotent; acked responses are never returned again.
   app.post('/support/responses/ack', (req, res) => {
     const id = req.body?.id;
     if (typeof id !== 'string' || !ID_PATTERN.test(id)) return bad(res, 'id is required');
@@ -160,9 +158,10 @@ export function createApp() {
     res.json({ ok: true, alreadyAcked: info.changes === 0 });
   });
 
-  // Bot -> record an admin's response. Idempotent by id; one response per ticket.
   app.post('/support/responses', (req, res) => {
-    const { id, ticketId, userId, response, minutes, responderId } = req.body ?? {};
+    const body = req.body ?? {};
+    const { id, ticketId, response, minutes, responderId } = body;
+    const userId = toUserId(body.userId);
 
     if (typeof id !== 'string' || !ID_PATTERN.test(id)) return bad(res, 'id must be 8-64 letters, digits or hyphens');
     if (!isPositiveInt(ticketId)) return bad(res, 'ticketId must be a positive integer');
