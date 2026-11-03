@@ -20,9 +20,12 @@ export function buildTicketEmbed(ticket, answer, notice = null) {
       { name: 'User ID', value: String(ticket.userId), inline: true },
       { name: 'Category', value: ticket.category, inline: true },
       { name: 'Explanation', value: clip(escapeMarkdown(ticket.explanation)) },
-      { name: 'Submitted', value: discordTime(ticket.createdAt), inline: true },
-      { name: 'Status', value: answer ? '✅ Answered' : '🟡 Pending', inline: true },
     );
+
+  embed.addFields(
+    { name: 'Submitted', value: discordTime(ticket.createdAt), inline: true },
+    { name: 'Status', value: answer ? '✅ Answered' : '🟡 Pending', inline: true },
+  );
 
   if (answer) {
     embed.addFields(

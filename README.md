@@ -209,3 +209,9 @@ Shows a player's FreeUGC purchase history, newest first, with a Previous/Next pa
 **Lookup order:** the username index `user_<lowercase>` is checked first. If it's missing and the input is all digits, it's treated as a UserId.
 
 **Security:** the API key is redacted from logs, is never sent to Discord, and is read only from environment variables.
+
+## 12. Categories and the "Other" channel
+
+**Categories** are now `Report`, `FailedPurcahse`, `Bug`, and `Other`. Roblox sends `"category": "Other"` the same way as the others.
+
+**Routing:** `Other` tickets are posted to the channel set in `OTHER_SUPPORT_CHANNEL_ID`. If that variable is empty, they go to `SUPPORT_CHANNEL_ID`. Every other category still goes to the support channel. The bot needs View Channel, Send Messages, and Embed Links in the new channel.

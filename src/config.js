@@ -25,6 +25,8 @@ export const config = Object.freeze({
     clientId: required('DISCORD_CLIENT_ID'),
     guildId: required('DISCORD_GUILD_ID'),
     supportChannelId: required('SUPPORT_CHANNEL_ID'),
+    // Optional. Tickets in the "Other" category go here. If unset, they go to the support channel.
+    otherChannelId: process.env.OTHER_SUPPORT_CHANNEL_ID?.trim() || '',
     supportRoleIds: (process.env.SUPPORT_ROLE_IDS ?? '')
       .split(',')
       .map((s) => s.trim())
