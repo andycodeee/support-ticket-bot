@@ -156,7 +156,7 @@ The AI uses the Books Cover Support guidelines below. Replies for supported FAQ 
 - **Spam/troll:** Use the warning only for clearly meaningless, repeated, or obvious troll submissions. Short, misspelled, informal, non-English, or ambiguous but genuine messages are not spam; unclear messages get a clarification draft.
 - **Suggestions:** Thank the player and say feedback will be considered, without promising implementation.
 - **Reports, account-specific issues, and individual purchase problems:** Flag for a human; do not invent facts or promise account actions or refunds.
-- Every drafted reply uses a friendly tone, addresses the player by Roblox username, and ends with “XOXO, Books Cover Support.”
+- Every reply uses plain text only (no Markdown such as `**` or `__`), a friendly tone, the player's Roblox username, and ends with “XOXO, Books Cover Support.”
 
 ---
 

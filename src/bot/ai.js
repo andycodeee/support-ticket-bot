@@ -25,7 +25,7 @@ Classification rules:
 - report: reports about a player or other issue needing staff investigation. Flag for a human.
 - unclear: cannot confidently identify the issue; do not guess.
 
-Use a concise reason. Do not write a response or invent policies/features. The application will select an approved response template based on your category.`;
+Use a concise reason. Do not write a response or invent policies/features. The application will select an approved response template based on your category. Any text you return must be plain text with no Markdown formatting; never use ** or __.`;
 
 function safeText(value, maxLength) {
   return value.trim().slice(0, maxLength);
@@ -37,9 +37,9 @@ function approvedDraft(category, username) {
 
   switch (category) {
     case 'free_ugc':
-      return `${hello}To purchase a free UGC item, navigate to the **Free UGC** button located in the middle of the top section of your screen.\n\nYou will see a selection of available items, each displaying its required price in minutes.\n\nTo purchase an item:\n1. Select the UGC item you want.\n2. Click the **Buy** button.\n3. Confirm your purchase when prompted.\n\nOnce the purchase is completed, you will own the UGC item!\n\n**Please note:** Free UGC items still require minutes to purchase. If an item is sold out, unfortunately, we cannot restock it or manually make it available again.${signoff}`;
+      return `${hello}To purchase a free UGC item, navigate to the Free UGC button located in the middle of the top section of your screen.\n\nYou will see a selection of available items, each displaying its required price in minutes.\n\nTo purchase an item:\n1. Select the UGC item you want.\n2. Click the Buy button.\n3. Confirm your purchase when prompted.\n\nOnce the purchase is completed, you will own the UGC item!\n\nPlease note: Free UGC items still require minutes to purchase. If an item is sold out, unfortunately, we cannot restock it or manually make it available again.${signoff}`;
     case 'gameplay_help':
-      return `${hello}If you would like to replay the tutorial, simply open **Settings** and scroll down until you find the **Replay Tutorial** button.\n\nClick it, and Bitsy will guide you through the game again, explaining everything you need to know!${signoff}`;
+      return `${hello}If you would like to replay the tutorial, simply open Settings and scroll down until you find the Replay Tutorial button.\n\nClick it, and Bitsy will guide you through the game again, explaining everything you need to know!${signoff}`;
     case 'spam':
       return `Hey ${username},\n\nOur automated support system detected that your message may be spam or a troll submission.\n\nPlease make sure your future tickets contain a genuine question or issue that our support team can help you with.\n\nRepeated misuse of the support system may result in restrictions or a ban from submitting support tickets.\n\nThank you for your understanding.${signoff}`;
     case 'suggestion':
