@@ -54,11 +54,19 @@ async function processTicket(client, ticket) {
     : await getChannelForCategory(client, ticket.category);
   const ticketSnapshot = makeSnapshot(ticket);
   let snapshot = existing?.payload ? JSON.parse(existing.payload) : ticketSnapshot;
-  if (!existing && !ticket.response) {
+  if (
+    config.ai.enabled &&
+    !ticket.response &&
+    !existing?.message_id &&
+    !snapshot.aiCategory
+  ) {
     try {
-      snapshot = { ...ticketSnapshot, ...(await analyzeTicket(ticketSnapshot)) };
+      const analysis = await analyzeTicket(ticketSnapshot);
+      if (!analysis) throw new Error('AI analysis returned no result');
+      snapshot = { ...ticketSnapshot, ...analysis };
     } catch (err) {
-      log.warn(`AI analysis unavailable for ticket #${ticket.id}; posting without it`, err);
+      log.warn(`AI analysis unavailable for ticket #${ticket.id}; it will not be posted until analysis succeeds`, err);
+      return false;
     }
   }
   insertDiscordTicket.run(ticket.id, ticket.userId, channel.id, JSON.stringify(snapshot));
@@ -93,6 +101,7 @@ async function processTicket(client, ticket) {
       await deliverResponse(client, getBotResponse.get(ticket.id));
     }
   }
+  return true;
 }
 
 async function syncTickets(client) {
@@ -100,7 +109,8 @@ async function syncTickets(client) {
   for (;;) {
     const tickets = await fetchTicketsAfter(cursor);
     for (const ticket of tickets) {
-      await processTicket(client, ticket);
+      const processed = await processTicket(client, ticket);
+      if (!processed) return;
       setCursor.run(String(ticket.id));
       cursor = ticket.id;
     }
