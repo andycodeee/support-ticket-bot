@@ -26,6 +26,7 @@ export const config = Object.freeze({
   port: intEnv('PORT', 3000),
   dbPath: process.env.DB_PATH?.trim() || './data/support.sqlite',
   apiSecret: required('API_SECRET'),
+  queuePassword: process.env.QUEUE_PASSWORD?.trim() || '',
   apiBaseUrl: (process.env.API_BASE_URL?.trim() || 'https://api.bookscover.store').replace(/\/+$/, ''),
   pollIntervalMs: Math.max(2000, intEnv('POLL_INTERVAL_MS', 10000)),
   ai: Object.freeze({

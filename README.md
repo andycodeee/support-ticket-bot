@@ -54,6 +54,7 @@ Health check: `curl http://localhost:3000/health` should return `{"ok":true}`.
 | `SUPPORT_ROLE_IDS` | Comma-separated role IDs allowed to respond. Server admins are always allowed. |
 | `API_BASE_URL` | `https://api.bookscover.store` (or your own URL if different). |
 | `API_SECRET` | Shared secret sent as `X-API-Secret` by Roblox and by the bot. Use 32+ random characters. Secret. |
+| `QUEUE_PASSWORD` | Optional password for the private `/queue` response dashboard. Browser username is `queue`; leave blank to disable the page. |
 | `POLL_INTERVAL_MS` | How often the bot checks for new tickets and retries queued responses. Default `10000`. |
 | `DB_PATH` | SQLite file path. Local default `./data/support.sqlite`; Railway uses `/data/support.sqlite`. |
 | `PORT` | HTTP port. Railway sets this automatically. |
@@ -100,6 +101,10 @@ Duplicate rules: the same `requestId` returns the existing ticket. With no `requ
 **`GET /support/responses`** returns undelivered responses in your expected shape: `{ "responses": [{ "id": "unique-id", "userId": 123, "response": "message", "minutes": 500 }] }`. Each response is leased for 60 seconds so two game servers polling at once don't both receive it.
 
 **`POST /support/responses/ack`** body `{ "id": "unique-id" }`. Marks the response delivered. It is never returned again. Repeated acks are safe and return `alreadyAcked: true`. Unknown IDs return `404`.
+
+### Private response queue dashboard
+
+Open **`/queue`** on the API website and sign in with username `queue` and the `QUEUE_PASSWORD` environment variable. The page refreshes every 15 seconds and shows the latest 200 responses, with pending and acknowledged counts. “Acknowledged by game” means Roblox sent the response ACK; it does not prove that the player read the response. Set a strong `QUEUE_PASSWORD` in local `.env` or Railway Variables; if it is unset, `/queue` is disabled.
 
 ### Bot endpoints (new, required by the bot)
 
