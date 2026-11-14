@@ -88,8 +88,16 @@ async function requestGemini(userContent) {
       generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
     }),
   });
-  if (!response.ok) throw new Error(`Gemini returned HTTP ${response.status}`);
   const result = await response.json();
+  if (!response.ok) {
+    const detail = result?.error?.message;
+    if (response.status === 404) {
+      throw new Error(
+        `Gemini model "${config.ai.model}" was not found or does not support generateContent (HTTP 404). Check AI_MODEL against the models available to your API key${detail ? `: ${detail}` : '.'}`,
+      );
+    }
+    throw new Error(`Gemini returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
+  }
   const content = result?.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('');
   if (typeof content !== 'string' || !content) throw new Error('Gemini returned an invalid or blocked response');
   return content;

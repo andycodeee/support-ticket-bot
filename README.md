@@ -204,6 +204,7 @@ Backups: the database is at `/data/support.sqlite`. Use Railway's volume backup 
 | Button says you don't have permission | Add your role to `SUPPORT_ROLE_IDS` (comma-separated), or give yourself Administrator. |
 | Roblox gets `401` | `API_SECRET` in the game must match the server exactly. |
 | Responses show "queued" repeatedly | The API is unreachable or `API_BASE_URL` is wrong. The bot retries automatically. |
+| `Gemini model ... was not found (HTTP 404)` | Check the `AI_MODEL` Railway/local environment variable matches a model available to your Google AI Studio API key and supports `generateContent`. Restart/redeploy after changing it. |
 | Commands fail with `Interaction has already been acknowledged` | Make sure nothing else is responding to the same button. |
 
 ---
