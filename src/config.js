@@ -32,7 +32,7 @@ export const config = Object.freeze({
     enabled: boolEnv('AI_ENABLED', false),
     provider: (process.env.AI_PROVIDER?.trim().toLowerCase() || 'ollama'),
     baseUrl: (process.env.AI_BASE_URL?.trim() || 'http://127.0.0.1:11434').replace(/\/+$/, ''),
-    model: process.env.AI_MODEL?.trim() || (process.env.AI_PROVIDER?.trim().toLowerCase() === 'gemini' ? 'gemini-2.5-flash' : 'qwen2.5:3b'),
+    model: process.env.AI_MODEL?.trim() || (process.env.AI_PROVIDER?.trim().toLowerCase() === 'gemini' ? 'gemini-4-hydrogen' : 'qwen2.5:3b'),
     apiKey: process.env.AI_API_KEY?.trim() || '',
     timeoutMs: Math.max(1000, intEnv('AI_TIMEOUT_MS', 30000)),
   }),

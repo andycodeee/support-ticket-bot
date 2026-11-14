@@ -60,7 +60,7 @@ Health check: `curl http://localhost:3000/health` should return `{"ok":true}`.
 | `AI_ENABLED` | Set to `true` to enable translation, ticket classification, and reply drafts. Default `false`. |
 | `AI_PROVIDER` | `ollama` (default, local) or `gemini` (Google Gemini API). |
 | `AI_BASE_URL` | Ollama server URL; used only with Ollama. Default `http://127.0.0.1:11434`. |
-| `AI_MODEL` | Model name; defaults to `qwen2.5:3b` for Ollama or `gemini-2.5-flash` for Gemini. |
+| `AI_MODEL` | Model name; defaults to `qwen2.5:3b` for Ollama or `gemini-4-hydrogen` for Gemini. |
 | `AI_API_KEY` | Google AI Studio API key; required only when AI is enabled with `AI_PROVIDER=gemini`. Secret. |
 | `AI_TIMEOUT_MS` | Maximum time to wait for AI analysis per ticket. Default `30000`. |
 
@@ -137,7 +137,7 @@ Discord's 3-second interaction limit is handled by responding to the modal immed
 
 ### AI setup (optional)
 
-**Google Gemini API is supported.** Create an API key in Google AI Studio, then set `AI_ENABLED=true`, `AI_PROVIDER=gemini`, `AI_MODEL=gemini-2.5-flash`, and `AI_API_KEY=<your key>` in the bot environment. Keep the key private (for Railway, add it as a service variable; do not commit it to Git). Gemini API free-tier availability and quotas can vary by model, account, and region, so check Google's current AI Studio pricing and limits. Ticket text is sent to Google for analysis when this provider is enabled; review Google's current data-use terms before using real player tickets.
+**Google Gemini API is supported.** Create an API key in Google AI Studio, then set `AI_ENABLED=true`, `AI_PROVIDER=gemini`, `AI_MODEL=gemini-4-hydrogen`, and `AI_API_KEY=<your key>` in the bot environment. Google currently lists `gemini-4-hydrogen` as its default general-purpose model and includes it in the Gemini API free tier, subject to rate limits. Keep the key private (for Railway, add it as a service variable; do not commit it to Git). Ticket text is sent to Google for analysis when this provider is enabled; review Google's current data-use terms before using real player tickets.
 
 Alternatively, install [Ollama](https://ollama.com/) on the same machine as the bot, download a multilingual model, and use `AI_ENABLED=true`, `AI_PROVIDER=ollama`, and `AI_MODEL=qwen2.5:3b`. Ollama normally listens on `http://127.0.0.1:11434`; set `AI_BASE_URL` if needed. For a hosted bot, `127.0.0.1` refers to the bot host, not your PC. Do not expose an unauthenticated Ollama port to the public internet. The ticket stays local to your Ollama server for AI inference.
 
