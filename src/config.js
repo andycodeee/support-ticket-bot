@@ -14,12 +14,28 @@ function intEnv(name, fallback) {
   return n;
 }
 
+function boolEnv(name, fallback) {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (!raw) return fallback;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  throw new Error(`${name} must be true or false`);
+}
+
 export const config = Object.freeze({
   port: intEnv('PORT', 3000),
   dbPath: process.env.DB_PATH?.trim() || './data/support.sqlite',
   apiSecret: required('API_SECRET'),
   apiBaseUrl: (process.env.API_BASE_URL?.trim() || 'https://api.bookscover.store').replace(/\/+$/, ''),
   pollIntervalMs: Math.max(2000, intEnv('POLL_INTERVAL_MS', 10000)),
+  ai: Object.freeze({
+    enabled: boolEnv('AI_ENABLED', false),
+    provider: (process.env.AI_PROVIDER?.trim().toLowerCase() || 'ollama'),
+    baseUrl: (process.env.AI_BASE_URL?.trim() || 'http://127.0.0.1:11434').replace(/\/+$/, ''),
+    model: process.env.AI_MODEL?.trim() || (process.env.AI_PROVIDER?.trim().toLowerCase() === 'gemini' ? 'gemini-2.5-flash' : 'qwen2.5:3b'),
+    apiKey: process.env.AI_API_KEY?.trim() || '',
+    timeoutMs: Math.max(1000, intEnv('AI_TIMEOUT_MS', 30000)),
+  }),
   discord: Object.freeze({
     token: required('DISCORD_TOKEN'),
     clientId: required('DISCORD_CLIENT_ID'),
@@ -31,3 +47,10 @@ export const config = Object.freeze({
       .filter(Boolean),
   }),
 });
+
+if (!['ollama', 'gemini'].includes(config.ai.provider)) {
+  throw new Error('AI_PROVIDER must be ollama or gemini');
+}
+if (config.ai.enabled && config.ai.provider === 'gemini' && !config.ai.apiKey) {
+  throw new Error('AI_API_KEY is required when AI_ENABLED=true and AI_PROVIDER=gemini');
+}

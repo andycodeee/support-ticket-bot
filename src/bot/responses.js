@@ -30,7 +30,7 @@ export async function refreshTicketMessage(client, ticketId) {
   if (message) {
     await message.edit({
       embeds: [buildTicketEmbed(snapshot, answer, notice)],
-      components: answer || notice ? [] : [buildRespondRow(ticketId)],
+      components: answer || notice ? [] : [buildRespondRow(ticketId, Boolean(snapshot.aiSuggestedResponse))],
       allowedMentions: { parse: [] },
     });
   } else {

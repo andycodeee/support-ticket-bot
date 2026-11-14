@@ -57,6 +57,12 @@ Health check: `curl http://localhost:3000/health` should return `{"ok":true}`.
 | `POLL_INTERVAL_MS` | How often the bot checks for new tickets and retries queued responses. Default `10000`. |
 | `DB_PATH` | SQLite file path. Local default `./data/support.sqlite`; Railway uses `/data/support.sqlite`. |
 | `PORT` | HTTP port. Railway sets this automatically. |
+| `AI_ENABLED` | Set to `true` to enable translation, ticket classification, and reply drafts. Default `false`. |
+| `AI_PROVIDER` | `ollama` (default, local) or `gemini` (Google Gemini API). |
+| `AI_BASE_URL` | Ollama server URL; used only with Ollama. Default `http://127.0.0.1:11434`. |
+| `AI_MODEL` | Model name; defaults to `qwen2.5:3b` for Ollama or `gemini-2.5-flash` for Gemini. |
+| `AI_API_KEY` | Google AI Studio API key; required only when AI is enabled with `AI_PROVIDER=gemini`. Secret. |
+| `AI_TIMEOUT_MS` | Maximum time to wait for AI analysis per ticket. Default `30000`. |
 
 To get role and channel IDs, enable Developer Mode in Discord (User Settings → Advanced), then right-click a channel or role and choose **Copy ID**.
 
@@ -119,8 +125,8 @@ curl -s http://localhost:3000/support/responses -H "X-API-Secret: $S"
 ## 6. How a ticket flows
 
 1. Roblox calls `POST /support`. The ticket is stored with status `pending`.
-2. Within `POLL_INTERVAL_MS`, the bot sees it, posts an embed (player, user ID, category, explanation, timestamp, status Pending) with one **Send Response** button, and records the Discord message ID in SQLite. A restart does not re-post tickets, because the cursor and per-ticket records are persisted.
-3. A permitted admin clicks **Send Response**. The modal asks for Response (required, paragraph) and Minutes (optional, whole number, empty means 0).
+2. Within `POLL_INTERVAL_MS`, the bot sees it and posts an embed with the original explanation, English translation, an advisory AI review, and (when available) a suggested reply. It records the Discord message ID in SQLite. A restart does not re-post tickets, because the cursor and per-ticket records are persisted.
+3. AI output is never sent automatically and never changes ticket status or minutes. A permitted admin can click **Use AI Draft** to open the normal editable response modal prefilled with the suggestion, or **Send Response** to write one from scratch. Review the content and minutes before submitting.
 4. The bot assigns a UUID, stores the response as `queued`, and calls `POST /support/responses`.
    - On success the state becomes `sent`, the embed switches to Answered (response, minutes, responder, timestamp), and the button is removed.
    - On a network error or 5xx, the response stays `queued` and the poller retries with the same UUID, so the API never records it twice.
@@ -128,6 +134,26 @@ curl -s http://localhost:3000/support/responses -H "X-API-Secret: $S"
 5. Roblox calls `GET /support/responses`, applies the minutes refund, then calls `POST /support/responses/ack`. Acked responses are never delivered again.
 
 Discord's 3-second interaction limit is handled by responding to the modal immediately with a deferred reply, then doing the API call.
+
+### AI setup (optional)
+
+**Google Gemini API is supported.** Create an API key in Google AI Studio, then set `AI_ENABLED=true`, `AI_PROVIDER=gemini`, `AI_MODEL=gemini-2.5-flash`, and `AI_API_KEY=<your key>` in the bot environment. Keep the key private (for Railway, add it as a service variable; do not commit it to Git). Gemini API free-tier availability and quotas can vary by model, account, and region, so check Google's current AI Studio pricing and limits. Ticket text is sent to Google for analysis when this provider is enabled; review Google's current data-use terms before using real player tickets.
+
+Alternatively, install [Ollama](https://ollama.com/) on the same machine as the bot, download a multilingual model, and use `AI_ENABLED=true`, `AI_PROVIDER=ollama`, and `AI_MODEL=qwen2.5:3b`. Ollama normally listens on `http://127.0.0.1:11434`; set `AI_BASE_URL` if needed. For a hosted bot, `127.0.0.1` refers to the bot host, not your PC. Do not expose an unauthenticated Ollama port to the public internet. The ticket stays local to your Ollama server for AI inference.
+
+If the selected AI provider is unavailable, times out, or returns invalid data, the ticket is still posted without AI fields. AI does not automatically send a response, reject a ticket, or change minutes. Staff see the original text, translation, suggested category, and review flag. Approved responses are drafts that staff can edit using **Use AI Draft**. Missing balances, individual purchase/account issues, and player reports are flagged for a human and deliberately have no AI response draft.
+
+The AI uses the Books Cover Support guidelines below. Replies for supported FAQ categories are generated from fixed templates in code, not improvised by the model; the Roblox username is inserted automatically.
+
+#### Support categories and rules
+
+- **Free UGC:** Explain the in-game Free UGC button, item minutes prices, Buy/confirm steps, and that sold-out items cannot be restocked. General how-to questions are not treated as purchase disputes.
+- **Missing points/minutes:** Always flag for an administrator. Never promise a refund, compensation, balance change, or resolution.
+- **Gameplay/tutorial:** Provide the approved Settings → Replay Tutorial instructions.
+- **Spam/troll:** Use the warning only for clearly meaningless, repeated, or obvious troll submissions. Short, misspelled, informal, non-English, or ambiguous but genuine messages are not spam; unclear messages get a clarification draft.
+- **Suggestions:** Thank the player and say feedback will be considered, without promising implementation.
+- **Reports, account-specific issues, and individual purchase problems:** Flag for a human; do not invent facts or promise account actions or refunds.
+- Every drafted reply uses a friendly tone, addresses the player by Roblox username, and ends with “XOXO, Books Cover Support.”
 
 ---
 

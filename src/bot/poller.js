@@ -3,6 +3,7 @@ import { db } from '../db.js';
 import { log } from '../logger.js';
 import { fetchTicketsAfter } from './api.js';
 import { getSupportChannel } from './channel.js';
+import { analyzeTicket } from './ai.js';
 import { buildRespondRow, buildTicketEmbed, RESPOND_PREFIX } from './embeds.js';
 import { retryPending } from './responses.js';
 
@@ -31,7 +32,7 @@ async function processTicket(client, ticket) {
   if (existing?.message_id) return;
 
   const channel = await getSupportChannel(client);
-  const snapshot = {
+  const ticketSnapshot = {
     id: ticket.id,
     userId: ticket.userId,
     username: ticket.username,
@@ -39,6 +40,14 @@ async function processTicket(client, ticket) {
     explanation: ticket.explanation,
     createdAt: ticket.createdAt,
   };
+  let snapshot = existing?.payload ? JSON.parse(existing.payload) : ticketSnapshot;
+  if (!existing && !ticket.response) {
+    try {
+      snapshot = { ...ticketSnapshot, ...(await analyzeTicket(ticketSnapshot)) };
+    } catch (err) {
+      log.warn(`AI analysis unavailable for ticket #${ticket.id}; posting without it`, err);
+    }
+  }
   insertDiscordTicket.run(ticket.id, ticket.userId, channel.id, JSON.stringify(snapshot));
 
   let message = existing ? await findExistingMessage(channel, ticket.id) : null;
@@ -48,7 +57,7 @@ async function processTicket(client, ticket) {
       : null;
     message = await channel.send({
       embeds: [buildTicketEmbed(snapshot, answer)],
-      components: answer ? [] : [buildRespondRow(ticket.id)],
+      components: answer ? [] : [buildRespondRow(ticket.id, Boolean(snapshot.aiSuggestedResponse))],
       allowedMentions: { parse: [] },
     });
   }

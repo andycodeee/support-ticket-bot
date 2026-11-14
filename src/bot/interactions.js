@@ -10,13 +10,13 @@ import {
 import { config } from '../config.js';
 import { db } from '../db.js';
 import { log } from '../logger.js';
-import { MODAL_PREFIX, RESPOND_PREFIX } from './embeds.js';
+import { AI_DRAFT_PREFIX, MODAL_PREFIX, RESPOND_PREFIX } from './embeds.js';
 import { deliverResponse } from './responses.js';
 
 const MAX_MINUTES = 1_000_000_000;
 const MAX_RESPONSE_LENGTH = 1000;
 
-const getDiscordTicket = db.prepare('SELECT ticket_id FROM discord_tickets WHERE ticket_id = ?');
+const getDiscordTicket = db.prepare('SELECT ticket_id, payload FROM discord_tickets WHERE ticket_id = ?');
 const getBotResponse = db.prepare('SELECT * FROM bot_responses WHERE ticket_id = ?');
 const insertBotResponse = db.prepare(
   "INSERT INTO bot_responses (id, ticket_id, admin_id, admin_tag, response, minutes, state, attempts, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?)",
@@ -37,6 +37,9 @@ function isAuthorized(interaction) {
 const NOT_AUTHORIZED = 'You do not have permission to respond to support tickets.';
 
 export async function handleInteraction(client, interaction) {
+  if (interaction.isButton() && interaction.customId.startsWith(AI_DRAFT_PREFIX)) {
+    return onAiDraftButton(interaction);
+  }
   if (interaction.isButton() && interaction.customId.startsWith(RESPOND_PREFIX)) {
     return onRespondButton(interaction);
   }
@@ -51,6 +54,22 @@ async function onRespondButton(interaction) {
   const ticketId = ticketIdFrom(interaction.customId);
   if (!getDiscordTicket.get(ticketId)) return interaction.reply(ephemeral('This ticket is unknown to the bot.'));
 
+  return showResponseModal(interaction, ticketId);
+}
+
+async function onAiDraftButton(interaction) {
+  if (!isAuthorized(interaction)) return interaction.reply(ephemeral(NOT_AUTHORIZED));
+
+  const ticketId = ticketIdFrom(interaction.customId);
+  const ticket = getDiscordTicket.get(ticketId);
+  if (!ticket) return interaction.reply(ephemeral('This ticket is unknown to the bot.'));
+  const draft = JSON.parse(ticket.payload).aiSuggestedResponse;
+  if (!draft) return interaction.reply(ephemeral('There is no AI draft available for this ticket.'));
+
+  return showResponseModal(interaction, ticketId, draft);
+}
+
+async function showResponseModal(interaction, ticketId, draft = '') {
   const existing = getBotResponse.get(ticketId);
   if (existing) {
     return interaction.reply(ephemeral(
@@ -60,18 +79,19 @@ async function onRespondButton(interaction) {
     ));
   }
 
+  const responseInput = new TextInputBuilder()
+    .setCustomId('response')
+    .setLabel('Response (sent to the player)')
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(true)
+    .setMaxLength(MAX_RESPONSE_LENGTH);
+  if (draft) responseInput.setValue(draft.slice(0, MAX_RESPONSE_LENGTH));
+
   const modal = new ModalBuilder()
     .setCustomId(`${MODAL_PREFIX}${ticketId}`)
     .setTitle(`Respond to Ticket #${ticketId}`)
     .addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId('response')
-          .setLabel('Response (sent to the player)')
-          .setStyle(TextInputStyle.Paragraph)
-          .setRequired(true)
-          .setMaxLength(MAX_RESPONSE_LENGTH),
-      ),
+      new ActionRowBuilder().addComponents(responseInput),
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId('minutes')

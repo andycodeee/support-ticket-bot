@@ -1,6 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, escapeMarkdown } from 'discord.js';
 
 export const RESPOND_PREFIX = 'respond:';
+export const AI_DRAFT_PREFIX = 'ai-draft:';
 export const MODAL_PREFIX = 'modal:';
 
 const clip = (text, max = 1024) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
@@ -20,6 +21,18 @@ export function buildTicketEmbed(ticket, answer, notice = null) {
       { name: 'User ID', value: String(ticket.userId), inline: true },
       { name: 'Category', value: ticket.category, inline: true },
       { name: 'Explanation', value: clip(escapeMarkdown(ticket.explanation)) },
+      ...(ticket.translation ? [{
+        name: `English Translation${ticket.originalLanguage ? ` (from ${clip(escapeMarkdown(ticket.originalLanguage), 80)})` : ''}`,
+        value: clip(escapeMarkdown(ticket.translation)),
+      }] : []),
+      ...(ticket.aiReview ? [{
+        name: ticket.aiReview === 'review' ? '⚠️ AI Check: Human Review Required' : '✅ AI Check: No Human Review Flag',
+        value: clip(escapeMarkdown(`${ticket.aiCategory ? `Category: ${ticket.aiCategory.replaceAll('_', ' ')}. ` : ''}${ticket.aiReviewReason || 'No additional details.'}`)),
+      }] : []),
+      ...(ticket.aiSuggestedResponse ? [{
+        name: 'AI Reply Draft — Review Before Sending',
+        value: clip(escapeMarkdown(ticket.aiSuggestedResponse)),
+      }] : []),
       { name: 'Submitted', value: discordTime(ticket.createdAt), inline: true },
       { name: 'Status', value: answer ? '✅ Answered' : '🟡 Pending', inline: true },
     );
@@ -38,11 +51,20 @@ export function buildTicketEmbed(ticket, answer, notice = null) {
   return embed;
 }
 
-export function buildRespondRow(ticketId) {
-  return new ActionRowBuilder().addComponents(
+export function buildRespondRow(ticketId, hasAiDraft = false) {
+  const buttons = [
     new ButtonBuilder()
       .setCustomId(`${RESPOND_PREFIX}${ticketId}`)
       .setLabel('Send Response')
       .setStyle(ButtonStyle.Primary),
-  );
+  ];
+  if (hasAiDraft) {
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId(`${AI_DRAFT_PREFIX}${ticketId}`)
+        .setLabel('Use AI Draft')
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+  return new ActionRowBuilder().addComponents(buttons);
 }
