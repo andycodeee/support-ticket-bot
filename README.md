@@ -57,7 +57,8 @@ Health check: `curl http://localhost:3000/health` should return `{"ok":true}`.
 | `POLL_INTERVAL_MS` | How often the bot checks for new tickets and retries queued responses. Default `10000`. |
 | `DB_PATH` | SQLite file path. Local default `./data/support.sqlite`; Railway uses `/data/support.sqlite`. |
 | `PORT` | HTTP port. Railway sets this automatically. |
-| `AI_ENABLED` | Set to `true` to enable translation, ticket classification, and reply drafts. Default `false`. |
+| `AI_ENABLED` | Set to `true` to enable translation, ticket classification, and replies. Default `false`. |
+| `AI_AUTO_REPLY` | Automatically send approved FAQ, suggestion, spam-warning, and clarification replies. Default `true` when AI is enabled. Set `false` for draft-only mode. |
 | `AI_PROVIDER` | `ollama` (default, local) or `gemini` (Google Gemini API). |
 | `AI_BASE_URL` | Ollama server URL; used only with Ollama. Default `http://127.0.0.1:11434`. |
 | `AI_MODEL` | Model name; defaults to `qwen2.5:3b` for Ollama or `gemini-4-hydrogen` for Gemini. |
@@ -126,7 +127,9 @@ curl -s http://localhost:3000/support/responses -H "X-API-Secret: $S"
 
 1. Roblox calls `POST /support`. The ticket is stored with status `pending`.
 2. Within `POLL_INTERVAL_MS`, the bot sees it and posts an embed with the original explanation, English translation, an advisory AI review, and (when available) a suggested reply. It records the Discord message ID in SQLite. A restart does not re-post tickets, because the cursor and per-ticket records are persisted.
-3. AI output is never sent automatically and never changes ticket status or minutes. A permitted admin can click **Use AI Draft** to open the normal editable response modal prefilled with the suggestion, or **Send Response** to write one from scratch. Review the content and minutes before submitting.
+3. When `AI_AUTO_REPLY=true`, approved replies for Free UGC, gameplay/tutorial help, suggestions, clearly identified spam, and unclear tickets (clarification request) are automatically sent with zero minutes. The exact approved reply is based on a fixed template. A permitted admin can turn off auto-replies with `AI_AUTO_REPLY=false`; then **Use AI Draft** opens the normal editable response modal, or **Send Response** lets staff write one from scratch.
+   - Missing points/minutes, account or individual purchase problems, and reports are always left for a human administrator. They receive no automatic reply and never receive minutes automatically.
+   - AI classifications can be wrong. Review ticket embeds and disable auto-replies with `AI_AUTO_REPLY=false` if you want every response to require staff approval.
 4. The bot assigns a UUID, stores the response as `queued`, and calls `POST /support/responses`.
    - On success the state becomes `sent`, the embed switches to Answered (response, minutes, responder, timestamp), and the button is removed.
    - On a network error or 5xx, the response stays `queued` and the poller retries with the same UUID, so the API never records it twice.
@@ -141,7 +144,7 @@ Discord's 3-second interaction limit is handled by responding to the modal immed
 
 Alternatively, install [Ollama](https://ollama.com/) on the same machine as the bot, download a multilingual model, and use `AI_ENABLED=true`, `AI_PROVIDER=ollama`, and `AI_MODEL=qwen2.5:3b`. Ollama normally listens on `http://127.0.0.1:11434`; set `AI_BASE_URL` if needed. For a hosted bot, `127.0.0.1` refers to the bot host, not your PC. Do not expose an unauthenticated Ollama port to the public internet. The ticket stays local to your Ollama server for AI inference.
 
-If the selected AI provider is unavailable, times out, or returns invalid data, the ticket is still posted without AI fields. AI does not automatically send a response, reject a ticket, or change minutes. Staff see the original text, translation, suggested category, and review flag. Approved responses are drafts that staff can edit using **Use AI Draft**. Missing balances, individual purchase/account issues, and player reports are flagged for a human and deliberately have no AI response draft.
+If the selected AI provider is unavailable, times out, or returns invalid data, the ticket is still posted without AI fields. AI never rejects a ticket or changes minutes. With auto-replies enabled, only the fixed approved replies for non-sensitive categories are sent, always with zero minutes. Missing balances, individual purchase/account issues, and player reports are flagged for a human and deliberately have no AI response draft.
 
 The AI uses the Books Cover Support guidelines below. Replies for supported FAQ categories are generated from fixed templates in code, not improvised by the model; the Roblox username is inserted automatically.
 

@@ -30,6 +30,7 @@ export const config = Object.freeze({
   pollIntervalMs: Math.max(2000, intEnv('POLL_INTERVAL_MS', 10000)),
   ai: Object.freeze({
     enabled: boolEnv('AI_ENABLED', false),
+    autoReply: boolEnv('AI_AUTO_REPLY', true),
     provider: (process.env.AI_PROVIDER?.trim().toLowerCase() || 'ollama'),
     baseUrl: (process.env.AI_BASE_URL?.trim() || 'http://127.0.0.1:11434').replace(/\/+$/, ''),
     model: process.env.AI_MODEL?.trim() || (process.env.AI_PROVIDER?.trim().toLowerCase() === 'gemini' ? 'gemini-4-hydrogen' : 'qwen2.5:3b'),

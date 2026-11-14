@@ -53,7 +53,7 @@ export async function deliverResponse(client, row) {
       userId: dt.user_id,
       response: row.response,
       minutes: row.minutes,
-      responderId: row.admin_id,
+      responderId: row.admin_id === 'ai' ? null : row.admin_id,
     });
     setSent.run(Date.now(), row.id);
     log.info(`Response ${row.id} recorded by API for ticket #${row.ticket_id}`);

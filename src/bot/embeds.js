@@ -29,7 +29,7 @@ export function buildTicketEmbed(ticket, answer, notice = null) {
         name: ticket.aiReview === 'review' ? '⚠️ AI Check: Human Review Required' : '✅ AI Check: No Human Review Flag',
         value: clip(escapeMarkdown(`${ticket.aiCategory ? `Category: ${ticket.aiCategory.replaceAll('_', ' ')}. ` : ''}${ticket.aiReviewReason || 'No additional details.'}`)),
       }] : []),
-      ...(ticket.aiSuggestedResponse ? [{
+      ...(ticket.aiSuggestedResponse && !answer ? [{
         name: 'AI Reply Draft — Review Before Sending',
         value: clip(escapeMarkdown(ticket.aiSuggestedResponse)),
       }] : []),
@@ -41,7 +41,7 @@ export function buildTicketEmbed(ticket, answer, notice = null) {
     embed.addFields(
       { name: 'Response', value: clip(escapeMarkdown(answer.response)) },
       { name: 'Minutes', value: String(answer.minutes), inline: true },
-      { name: 'Answered By', value: answer.adminId ? `<@${answer.adminId}>` : 'Unknown', inline: true },
+      { name: 'Answered By', value: answer.adminId === 'ai' ? 'Books Cover AI' : answer.adminId ? `<@${answer.adminId}>` : 'Unknown', inline: true },
       { name: 'Answered At', value: discordTime(answer.at), inline: true },
     );
   }
