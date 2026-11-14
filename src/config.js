@@ -41,10 +41,18 @@ export const config = Object.freeze({
     clientId: required('DISCORD_CLIENT_ID'),
     guildId: required('DISCORD_GUILD_ID'),
     supportChannelId: required('SUPPORT_CHANNEL_ID'),
+    // Optional. Tickets in the "Other" category go here. If unset, they go to the support channel.
+    otherChannelId: process.env.OTHER_SUPPORT_CHANNEL_ID?.trim() || '',
     supportRoleIds: (process.env.SUPPORT_ROLE_IDS ?? '')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
+  }),
+  roblox: Object.freeze({
+    apiKey: process.env.ROBLOX_API_KEY?.trim() || '',
+    universeId: process.env.ROBLOX_UNIVERSE_ID?.trim() || '',
+    pointsDatastore: process.env.POINTS_DATASTORE?.trim() || '',
+    pointsScope: process.env.POINTS_SCOPE?.trim() || 'global',
   }),
 });
 

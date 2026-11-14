@@ -4,7 +4,7 @@ import { config } from '../config.js';
 import { db } from '../db.js';
 import { log } from '../logger.js';
 
-export const CATEGORIES = ['Report', 'FailedPurcahse', 'Bug'];
+export const CATEGORIES = ['Report', 'FailedPurcahse', 'Bug', 'Other'];
 
 const LEASE_MS = 60_000;
 const DUPLICATE_WINDOW_MS = 30_000;

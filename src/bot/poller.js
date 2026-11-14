@@ -2,7 +2,7 @@ import { config } from '../config.js';
 import { db } from '../db.js';
 import { log } from '../logger.js';
 import { fetchTicketsAfter } from './api.js';
-import { getSupportChannel } from './channel.js';
+import { getChannelById, getChannelForCategory } from './channel.js';
 import { analyzeTicket } from './ai.js';
 import { buildRespondRow, buildTicketEmbed, RESPOND_PREFIX } from './embeds.js';
 import { retryPending } from './responses.js';
@@ -27,12 +27,8 @@ async function findExistingMessage(channel, ticketId) {
   ) ?? null;
 }
 
-async function processTicket(client, ticket) {
-  const existing = getDiscordTicket.get(ticket.id);
-  if (existing?.message_id) return;
-
-  const channel = await getSupportChannel(client);
-  const ticketSnapshot = {
+function makeSnapshot(ticket) {
+  return {
     id: ticket.id,
     userId: ticket.userId,
     username: ticket.username,
@@ -40,6 +36,17 @@ async function processTicket(client, ticket) {
     explanation: ticket.explanation,
     createdAt: ticket.createdAt,
   };
+}
+
+async function processTicket(client, ticket) {
+  const existing = getDiscordTicket.get(ticket.id);
+  if (existing?.message_id) return;
+
+  // Keep retrying in the original channel if a send succeeded before its DB write.
+  const channel = existing?.channel_id
+    ? await getChannelById(client, existing.channel_id)
+    : await getChannelForCategory(client, ticket.category);
+  const ticketSnapshot = makeSnapshot(ticket);
   let snapshot = existing?.payload ? JSON.parse(existing.payload) : ticketSnapshot;
   if (!existing && !ticket.response) {
     try {
@@ -62,7 +69,7 @@ async function processTicket(client, ticket) {
     });
   }
   setPosted.run(message.id, Date.now(), ticket.id);
-  log.info(`Posted ticket #${ticket.id} to Discord`);
+  log.info(`Posted ticket #${ticket.id} (${ticket.category}) to Discord`);
 }
 
 async function syncTickets(client) {
@@ -79,6 +86,10 @@ async function syncTickets(client) {
 }
 
 export function startPoller(client) {
+  if (config.discord.otherChannelId === '') {
+    log.info('OTHER_SUPPORT_CHANNEL_ID not set: "Other" tickets will go to the support channel');
+  }
+
   let busy = false;
   const tick = async () => {
     if (busy) return;

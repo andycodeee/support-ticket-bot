@@ -1,7 +1,7 @@
 import { db } from '../db.js';
 import { log } from '../logger.js';
 import { ApiError, submitResponse } from './api.js';
-import { getSupportChannel } from './channel.js';
+import { getChannelById } from './channel.js';
 import { buildRespondRow, buildTicketEmbed } from './embeds.js';
 
 const getDiscordTicket = db.prepare('SELECT * FROM discord_tickets WHERE ticket_id = ?');
@@ -25,7 +25,7 @@ export async function refreshTicketMessage(client, ticketId) {
     : null;
   const notice = br?.state === 'rejected' ? `Response not recorded: ${br.last_error}` : null;
 
-  const channel = await getSupportChannel(client);
+  const channel = await getChannelById(client, dt.channel_id);
   const message = await channel.messages.fetch(dt.message_id).catch(() => null);
   if (message) {
     await message.edit({
