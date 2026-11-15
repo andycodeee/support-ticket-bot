@@ -4,11 +4,15 @@ import { db } from '../db.js';
 import { log } from '../logger.js';
 import { fetchTicketsAfter } from './api.js';
 import { getChannelById, getChannelForCategory } from './channel.js';
-import { analyzeTicket } from './ai.js';
+import { analyzeTicket, applyPurchaseStatus } from './ai.js';
 import { buildRespondRow, buildTicketEmbed, RESPOND_PREFIX } from './embeds.js';
 import { deliverResponse, retryPending } from './responses.js';
+import { fetchPurchaseHistory } from '../roblox/purchases.js';
 
-const AI_AUTO_REPLY_CATEGORIES = new Set(['free_ugc', 'gameplay_help', 'suggestion', 'spam', 'unclear']);
+const AI_AUTO_REPLY_CATEGORIES = new Set([
+  'free_ugc', 'gameplay_help', 'suggestion', 'spam', 'unclear',
+  'item_unavailable', 'duplicate_charge', 'account_or_purchase', 'refund_status',
+]);
 
 const getCursor = db.prepare("SELECT value FROM kv WHERE key = 'ticket_cursor'");
 const setCursor = db.prepare(
@@ -64,6 +68,22 @@ async function processTicket(client, ticket) {
       const analysis = await analyzeTicket(ticketSnapshot);
       if (!analysis) throw new Error('AI analysis returned no result');
       snapshot = { ...ticketSnapshot, ...analysis };
+      if (analysis.aiCategory === 'refund_status') {
+        let history = null;
+        try {
+          history = await fetchPurchaseHistory(ticket.userId);
+        } catch (err) {
+          log.warn(`Purchase history lookup failed for refund-status ticket #${ticket.id}`, err);
+        }
+        snapshot = {
+          ...snapshot,
+          ...applyPurchaseStatus(analysis, {
+            username: ticket.username,
+            explanation: ticket.explanation,
+            history,
+          }),
+        };
+      }
     } catch (err) {
       log.warn(`AI analysis unavailable for ticket #${ticket.id}; it will not be posted until analysis succeeds`, err);
       return false;

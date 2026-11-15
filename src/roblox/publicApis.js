@@ -43,3 +43,20 @@ export function getAssetName(assetId) {
     return typeof data?.Name === 'string' && data.Name ? data.Name : null;
   });
 }
+
+export async function lookupUsername(username) {
+  try {
+    const res = await fetch('https://users.roblox.com/v1/usernames/users', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify({ usernames: [username], excludeBannedUsers: true }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const user = (await res.json())?.data?.[0];
+    if (!Number.isSafeInteger(user?.id) || user.id <= 0 || typeof user.name !== 'string') return null;
+    return { id: user.id, name: user.name };
+  } catch {
+    return null;
+  }
+}

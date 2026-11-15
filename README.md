@@ -65,6 +65,8 @@ Health check: `curl http://localhost:3000/health` should return `{"ok":true}`.
 | `AI_MODEL` | Model name; defaults to `qwen2.5:3b` for Ollama or `gemini-4-hydrogen` for Gemini. |
 | `AI_API_KEY` | Google AI Studio API key; required only when AI is enabled with `AI_PROVIDER=gemini`. Secret. |
 | `AI_TIMEOUT_MS` | Maximum time to wait for AI analysis per ticket. Default `30000`. |
+| `ROBLOX_PROFILE_DATASTORE` | ProfileStore DataStore name used by `/pointlog`. Defaults to `Production`. |
+| `ROBLOX_PROFILE_SCOPE` | ProfileStore DataStore scope used by `/pointlog`. Defaults to `global`. |
 
 To get role and channel IDs, enable Developer Mode in Discord (User Settings → Advanced), then right-click a channel or role and choose **Copy ID**.
 
@@ -132,8 +134,9 @@ curl -s http://localhost:3000/support/responses -H "X-API-Secret: $S"
 
 1. Roblox calls `POST /support`. The ticket is stored with status `pending`.
 2. Within `POLL_INTERVAL_MS`, the bot sees it and posts an embed with the original explanation, English translation, an advisory AI review, and (when available) a suggested reply. It records the Discord message ID in SQLite. A restart does not re-post tickets, because the cursor and per-ticket records are persisted.
-3. When `AI_AUTO_REPLY=true`, approved replies for Free UGC, gameplay/tutorial help, suggestions, clearly identified spam, and unclear tickets (clarification request) are automatically sent with zero minutes. The exact approved reply is based on a fixed template. A permitted admin can turn off auto-replies with `AI_AUTO_REPLY=false`; then **Use AI Draft** opens the normal editable response modal, or **Send Response** lets staff write one from scratch.
-   - Missing points/minutes, account or individual purchase problems, and reports are always left for a human administrator. They receive no automatic reply and never receive minutes automatically.
+3. When `AI_AUTO_REPLY=true`, fixed-template replies for Free UGC, gameplay/tutorial help, suggestions, clearly identified spam, clarification requests, item availability, and purchase handoffs/refund checks are automatically sent with zero minutes. A permitted admin can turn off auto-replies with `AI_AUTO_REPLY=false`; then **Use AI Draft** opens the normal editable response modal, or **Send Response** lets staff write one from scratch.
+   - Missing points/minutes and reports are always left for a human administrator. Item-availability issues get a fixed “try again later” reply; duplicate charges and other account/purchase issues get a fixed community-server human-review handoff.
+   - Refund-status questions are checked against the player's ProfileStore purchase history. The bot only confirms a refund when it can match a refunded entry (or when there is exactly one refunded entry); otherwise it sends the human-review handoff. It never grants points through this lookup.
    - AI classifications can be wrong. Review ticket embeds and disable auto-replies with `AI_AUTO_REPLY=false` if you want every response to require staff approval.
 4. The bot assigns a UUID, stores the response as `queued`, and calls `POST /support/responses`.
    - On success the state becomes `sent`, the embed switches to Answered (response, minutes, responder, timestamp), and the button is removed.
@@ -149,9 +152,9 @@ Discord's 3-second interaction limit is handled by responding to the modal immed
 
 Alternatively, install [Ollama](https://ollama.com/) on the same machine as the bot, download a multilingual model, and use `AI_ENABLED=true`, `AI_PROVIDER=ollama`, and `AI_MODEL=qwen2.5:3b`. Ollama normally listens on `http://127.0.0.1:11434`; set `AI_BASE_URL` if needed. For a hosted bot, `127.0.0.1` refers to the bot host, not your PC. Do not expose an unauthenticated Ollama port to the public internet. The ticket stays local to your Ollama server for AI inference.
 
-If the selected AI provider is unavailable, times out, or returns invalid data, the ticket is not posted to Discord yet. The poll cursor stays before that ticket, and the bot retries it on the next poll cycle; later tickets wait behind it to preserve ticket order. Once analysis succeeds, the ticket is posted normally. AI never rejects a ticket or changes minutes. With auto-replies enabled, only the fixed approved replies for non-sensitive categories are sent, always with zero minutes. Missing balances, individual purchase/account issues, and player reports are flagged for a human and deliberately have no AI response draft.
+If the selected AI provider is unavailable, times out, or returns invalid data, the ticket is not posted to Discord yet. The poll cursor stays before that ticket, and the bot retries it on the next poll cycle; later tickets wait behind it to preserve ticket order. Once analysis succeeds, the ticket is posted normally. AI never rejects a ticket or changes minutes. With auto-replies enabled, only fixed approved replies or human-review handoffs are sent, always with zero minutes. Missing balances and player reports remain flagged for a human without an automatic reply.
 
-The AI uses the Books Cover Support guidelines below. Replies for supported FAQ categories are generated from fixed templates in code, not improvised by the model; the Roblox username is inserted automatically.
+The AI uses the Books Cover Support guidelines below. Replies for supported categories are generated from fixed templates in code, not improvised by the model; the Roblox username is inserted automatically. Purchase-status replies are based on `PurchaseData` records, not on model claims.
 
 #### Support categories and rules
 
@@ -160,7 +163,9 @@ The AI uses the Books Cover Support guidelines below. Replies for supported FAQ 
 - **Gameplay/tutorial:** Provide the approved Settings → Replay Tutorial instructions.
 - **Spam/troll:** Use the warning only for clearly meaningless, repeated, or obvious troll submissions. Short, misspelled, informal, non-English, or ambiguous but genuine messages are not spam; unclear messages get a clarification draft.
 - **Suggestions:** Thank the player and say feedback will be considered, without promising implementation.
-- **Reports, account-specific issues, and individual purchase problems:** Flag for a human; do not invent facts or promise account actions or refunds.
+- **Unavailable Free UGC items / failed purchase attempts despite enough minutes:** Explain that item availability is controlled by Roblox, recommend trying again later, and offer the community-server human-review route if it persists.
+- **Refund-status questions:** Read the player's `PurchaseData` history; only confirm a purchase refund when the stored history provides a match. If it cannot be confirmed, direct the player to the community server for human review.
+- **Duplicate charges and other account-specific purchase issues:** Direct the player to submit a ticket in the community server for human review. Do not invent facts or promise account actions or refunds.
 - Every reply uses plain text only (no Markdown such as `**` or `__`), a friendly tone, the player's Roblox username, and ends with “XOXO, Books Cover Support.”
 
 ---
@@ -245,7 +250,17 @@ Shows a player's FreeUGC purchase history, newest first, with a Previous/Next pa
 
 **Security:** the API key is redacted from logs, is never sent to Discord, and is read only from environment variables.
 
-## 12. Categories and the "Other" channel
+## 12. `/pointlog` admin command
+
+Usage: `/pointlog user:<roblox_username or UserId>`
+
+Shows the player's latest point changes, newest first, with paginated results (up to the 250 entries saved by the game). Each record displays its timestamp, amount changed, resulting balance, and reason. Responses are ephemeral and only administrators can use the command or its page buttons.
+
+The command reads the ProfileStore record at the player's UserId key and expects `Data.PointLog` entries with `t` (Unix seconds), `a` (amount changed), `b` (balance after the change), and `r` (reason). It reads the live `Production` store by default; set `ROBLOX_PROFILE_DATASTORE=Test` only if you intend to inspect the Studio/Test store, and set `ROBLOX_PROFILE_SCOPE` if using a non-default scope. The Open Cloud API key needs Data Stores: read access to that profile store as well as `PurchaseData` for `/checkpurchase`.
+
+Usernames are resolved with Roblox's public username lookup API; numeric UserIds are read directly. The command does not change player data.
+
+## 13. Categories and the "Other" channel
 
 **Categories** are now `Report`, `FailedPurcahse`, `Bug`, and `Other`. Roblox sends `"category": "Other"` the same way as the others.
 

@@ -2,8 +2,9 @@ import { REST, Routes } from 'discord.js';
 import { config } from '../../config.js';
 import { log } from '../../logger.js';
 import { checkPurchaseCommand } from './checkpurchase.js';
+import { pointLogCommand } from './pointlog.js';
 
-export const commands = [checkPurchaseCommand];
+export const commands = [checkPurchaseCommand, pointLogCommand];
 
 /** Registers slash commands to the configured guild. Safe to run on every startup. */
 export async function registerCommands() {

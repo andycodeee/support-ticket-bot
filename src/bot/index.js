@@ -2,6 +2,7 @@ import { Client, Events, GatewayIntentBits, MessageFlags, PermissionsBitField } 
 import { config } from '../config.js';
 import { log } from '../logger.js';
 import { executeCheckPurchase, handlePurchasePage, PURCHASE_PAGE_PREFIX } from './commands/checkpurchase.js';
+import { executePointLog, handlePointLogPage, POINT_LOG_PAGE_PREFIX } from './commands/pointlog.js';
 import { registerCommands } from './commands/index.js';
 import { getSupportChannel } from './channel.js';
 import { handleInteraction } from './interactions.js';
@@ -11,8 +12,14 @@ async function route(client, interaction) {
   if (interaction.isChatInputCommand() && interaction.commandName === 'checkpurchase') {
     return executeCheckPurchase(interaction);
   }
+  if (interaction.isChatInputCommand() && interaction.commandName === 'pointlog') {
+    return executePointLog(interaction);
+  }
   if (interaction.isButton() && interaction.customId.startsWith(PURCHASE_PAGE_PREFIX)) {
     return handlePurchasePage(interaction);
+  }
+  if (interaction.isButton() && interaction.customId.startsWith(POINT_LOG_PAGE_PREFIX)) {
+    return handlePointLogPage(interaction);
   }
   return handleInteraction(client, interaction);
 }
