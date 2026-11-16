@@ -1,5 +1,6 @@
 import express from 'express';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { db } from '../db.js';
 import { log } from '../logger.js';
@@ -12,6 +13,7 @@ const MAX_MINUTES = 1_000_000_000;
 const MAX_RESPONSE_LENGTH = 1000;
 const MAX_EXPLANATION_LENGTH = 1000;
 const ID_PATTERN = /^[A-Za-z0-9-]{8,64}$/;
+const logoPath = fileURLToPath(new URL('../../logo.png', import.meta.url));
 
 const isPositiveInt = (v) => Number.isSafeInteger(v) && v > 0;
 const toUserId = (v) => {
@@ -236,7 +238,7 @@ td small {
 
 <header>
   <img
-    src="https://images-ext-1.discordapp.net/external/gb_TPMQIlrjl4T--aMh8TiVN0folpYpBbTLYMu9DhtM/https/i.ibb.co/w2RJTqx/Titelloses-242-20250804105113.png?format=webp&amp;quality=lossless&amp;width=1024&amp;height=1024"
+    src="/logo.png"
     alt="Logo"
     class="logo"
   >
@@ -327,12 +329,14 @@ export function createApp() {
 
   app.get('/health', (_req, res) => res.json({ ok: true, build: 'string-userid-v2' }));
 
+  app.get('/logo.png', (_req, res) => res.sendFile(logoPath));
+
   app.get('/queue', requireQueueAuth, (_req, res) => {
     const rows = listResponseQueue.all();
     const counts = responseQueueCounts.get();
     res.set({
       'Cache-Control': 'no-store',
-      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+      'Content-Security-Policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
     });
